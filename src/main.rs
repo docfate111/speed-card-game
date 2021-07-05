@@ -1,12 +1,14 @@
 use rand::Rng;
 use std::fmt;
-use std::io::Error;
+use std::io;
+#[derive(Copy, Clone, PartialEq)]
 enum Suite {
     Clubs,
     Hearts,
     Spades,
     Diamonds,
 }
+#[derive(Clone, PartialEq)]
 pub struct Card {
     suite: Suite,
     rank: String,
@@ -45,9 +47,14 @@ pub struct Deck {
 impl fmt::Display for Deck {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let mut str_rep = "".to_owned();
+        let mut count = 0;
         for i in self.cards.iter() {
             let card_str_rep = (*i).to_string();
+            str_rep.push_str("(");
+            str_rep.push_str(&count.to_string());
+            str_rep.push_str(") ");
             str_rep.push_str(&card_str_rep);
+            count += 1;
         }
         fmt.write_str(&str_rep)?;
         Ok(())
@@ -105,6 +112,14 @@ impl Deck {
         Some(Deck { cards: hand })
     }
 
+    fn remove_card(&mut self, to_remove: &Card) {
+        self.cards.retain(|x| x != to_remove);
+    }
+
+    fn add_card(&mut self, to_add: Card) {
+        self.cards.push(to_add);
+    }
+
     fn len(&self) -> i32 {
         self.cards.len() as i32
     }
@@ -112,20 +127,170 @@ impl Deck {
     fn deal_rest(&mut self) -> Option<Deck> {
         self.deal_hand(self.len())
     }
+
+    fn getCards(&self) -> Vec<Card> {
+        let mut cards = Vec::<Card>::new();
+        for i in &self.cards {
+            cards.push(i.clone());
+        }
+        cards
+    }
 }
 
-fn main() -> Result<(), Error> {
+#[derive(Clone)]
+struct Rank {
+    idx: usize,
+}
+
+impl<'a> Rank {
+    const RANKS: [&'static str; 13] = [
+        "Ace", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack",
+        "Queen", "King",
+    ];
+    fn setPtr(&mut self, rank: &'a str) {
+        self.idx = Self::RANKS.iter().position(|&r| r == rank).unwrap();
+    }
+    fn nth(&mut self, idx: usize) {
+        self.idx = idx;
+    }
+    fn current(&self) -> &'static str {
+        Self::RANKS[self.idx]
+    }
+    fn next(&mut self) {
+        self.idx += 1;
+    }
+    fn peek_next(&self) -> &'static str {
+        Self::RANKS[(self.idx + 1) % 14]
+    }
+    fn prev(&mut self) {
+        self.idx -= 1;
+    }
+    fn peek_prev(&self) -> &'static str {
+        Self::RANKS[(self.idx - 1) % 14]
+    }
+}
+fn print_menu() {
+    println!("(0) Choose pile to place card on left pile");
+    println!("(1) Choose pile to place card on right pile");
+    println!("(2) Wait");
+    println!("(3) Exit");
+}
+fn get_input() -> i32 {
+    let mut guess = String::new();
+    io::stdin()
+        .read_line(&mut guess)
+        .expect("Failed to read input");
+    match guess.trim().parse::<i32>() {
+        Ok(num) => num,
+        Err(_) => -1,
+    }
+}
+fn main() -> Result<(), &'static str> {
     let mut deck = Deck::new();
     deck.init();
     assert_eq!(deck.len(), 52);
     deck.shuffle();
     // speed starts with 2 in the middle
     let starting_two = deck.deal_hand(2).unwrap();
-    let player_complete_hand = deck.deal_hand(deck.len() / 2).unwrap();
+    let mut left_pile = Rank { idx: 0 };
+    let mut right_pile = Rank { idx: 0 };
+    let mut starting_two_cards = starting_two.getCards();
+    let left_card = starting_two_cards.pop().unwrap();
+    left_pile.setPtr(&left_card.rank);
+    let right_card = starting_two_cards.pop().unwrap();
+    right_pile.setPtr(&right_card.rank);
+    let mut player_complete_hand = deck.deal_hand(deck.len() / 2).unwrap();
     let computer_complete_hand = deck.deal_rest().unwrap();
     assert_eq!(deck.len(), 0);
     assert_eq!(player_complete_hand.len(), 25);
     assert_eq!(computer_complete_hand.len(), 25);
-    println!("Middle cards:\n{}", starting_two);
+    loop {
+        let divider = "=".repeat(14);
+        println!("Middle cards:\n{}\n{}{}\n", divider, starting_two, divider);
+        let mut player_five = player_complete_hand.deal_hand(5).unwrap();
+        println!("Your cards:\n{}\n{}{}\n", divider, player_five, divider);
+        print_menu();
+        let guess = get_input();
+        let mut left_side = true;
+        if guess == 1 {
+            left_side = false;
+        } else if guess == 3 {
+            break;
+        } else if guess < 0 || guess > 2 {
+            return Err("Input must be integer between 0 and 2 inclusive");
+        }
+        println!("Choose which card");
+        println!("Your cards:\n{}\n{}{}\n", divider, player_five, divider);
+        //let mut computer_five = computer_complete_hand.deal_hand(5);
+        let guess = get_input();
+        if guess < 0 || guess > 4 {
+            return Err("Input must be integer between 0 and 4 inclusive");
+        }
+        let player_card_options = player_five.getCards();
+        let chosen_card = player_card_options.get(guess as usize).unwrap();
+        let chosen_rank = chosen_card.rank.clone();
+        if left_side {
+            // place card down
+            if left_pile.peek_next() == chosen_rank {
+                println!("placed {} on top of {}", chosen_card, left_card);
+                left_pile.next();
+                // remove the card you chose
+                player_five.remove_card(&chosen_card);
+                // and get a new one for the five
+                if player_complete_hand.len() == 0 {
+                    println!("You win!");
+                    break;
+                }
+                player_five.add_card(player_complete_hand.deal_one().unwrap());
+            } else if left_pile.peek_prev() == chosen_rank {
+                println!("placed {} on top of {}", chosen_card, left_card);
+                left_pile.prev();
+                // remove the card you chose
+                player_five.remove_card(&chosen_card);
+                // and get a new one for the five
+                if player_complete_hand.len() == 0 {
+                    println!("You win!");
+                    break;
+                }
+                player_five.add_card(player_complete_hand.deal_one().unwrap());
+            } else {
+                println!(
+                    "Invalid move try again\nTried placing {} on top of {}",
+                    chosen_card, left_card
+                );
+            }
+        } else {
+            // place card down
+            if right_pile.peek_next() == chosen_rank {
+                println!("placed {} on top of {}", chosen_card, right_card);
+                right_pile.next();
+                // remove the card the player chose
+                player_five.remove_card(&chosen_card);
+                // and get a new one for the five
+                if player_complete_hand.len() == 0 {
+                    println!("You win!");
+                    break;
+                }
+                player_five.add_card(player_complete_hand.deal_one().unwrap());
+            } else if right_pile.peek_prev() == chosen_rank {
+                println!("placed {} on top of {}", chosen_card, right_card);
+                right_pile.prev();
+                // remove the card you chose
+                player_five.remove_card(&chosen_card);
+                // and get a new one for the five
+                if player_complete_hand.len() == 0 {
+                    println!("You win!");
+                    break;
+                }
+                player_five.add_card(player_complete_hand.deal_one().unwrap());
+            } else {
+                println!(
+                    "Invalid move try again\nTried placing {} on top of {}",
+                    chosen_card, right_card
+                );
+            }
+        }
+        println!("You chose option {}", guess);
+    }
     Ok(())
 }
