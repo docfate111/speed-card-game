@@ -128,7 +128,7 @@ impl Deck {
         self.deal_hand(self.len())
     }
 
-    fn getCards(&self) -> Vec<Card> {
+    fn get_cards(&self) -> Vec<Card> {
         let mut cards = Vec::<Card>::new();
         for i in &self.cards {
             cards.push(i.clone());
@@ -147,26 +147,21 @@ impl<'a> Rank {
         "Ace", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack",
         "Queen", "King",
     ];
-    fn setPtr(&mut self, rank: &'a str) {
+    fn set_ptr(&mut self, rank: &'a str) {
         self.idx = Self::RANKS.iter().position(|&r| r == rank).unwrap();
     }
-    fn nth(&mut self, idx: usize) {
-        self.idx = idx;
-    }
-    fn current(&self) -> &'static str {
-        Self::RANKS[self.idx]
-    }
+
     fn next(&mut self) {
         self.idx += 1;
     }
     fn peek_next(&self) -> &'static str {
-        Self::RANKS[(self.idx + 1) % 14]
+        Self::RANKS[(self.idx + 1) % Self::RANKS.len()]
     }
     fn prev(&mut self) {
         self.idx -= 1;
     }
     fn peek_prev(&self) -> &'static str {
-        Self::RANKS[(self.idx - 1) % 14]
+        Self::RANKS[(self.idx - 1) % Self::RANKS.len()]
     }
 }
 fn print_menu() {
@@ -194,45 +189,154 @@ fn main() -> Result<(), &'static str> {
     let starting_two = deck.deal_hand(2).unwrap();
     let mut left_pile = Rank { idx: 0 };
     let mut right_pile = Rank { idx: 0 };
-    let mut starting_two_cards = starting_two.getCards();
-    let left_card = starting_two_cards.pop().unwrap();
-    left_pile.setPtr(&left_card.rank);
-    let right_card = starting_two_cards.pop().unwrap();
-    right_pile.setPtr(&right_card.rank);
+    let mut starting_two_cards = starting_two.get_cards();
+    let mut right_card = starting_two_cards.pop().unwrap();
+    left_pile.set_ptr(&right_card.rank);
+    let mut left_card = starting_two_cards.pop().unwrap();
+    right_pile.set_ptr(&left_card.rank);
     let mut player_complete_hand = deck.deal_hand(deck.len() / 2).unwrap();
-    let computer_complete_hand = deck.deal_rest().unwrap();
+    let mut computer_complete_hand = deck.deal_rest().unwrap();
     assert_eq!(deck.len(), 0);
     assert_eq!(player_complete_hand.len(), 25);
     assert_eq!(computer_complete_hand.len(), 25);
+    let mut player_five = player_complete_hand.deal_hand(5).unwrap();
+    let mut computer_five = computer_complete_hand.deal_hand(5).unwrap();
     loop {
-        let divider = "=".repeat(14);
-        println!("Middle cards:\n{}\n{}{}\n", divider, starting_two, divider);
-        let mut player_five = player_complete_hand.deal_hand(5).unwrap();
+        let divider = "=".repeat(16);
+        println!(
+            "Middle cards:\n{}\n(0){}(1){}{}\n",
+            divider, left_card, right_card, divider
+        );
         println!("Your cards:\n{}\n{}{}\n", divider, player_five, divider);
         print_menu();
         let guess = get_input();
         let mut left_side = true;
-        if guess == 1 {
+        if guess == 0 {
             left_side = false;
+            println!("Choosing to place card on top of {}", left_card);
+        } else if guess == 1 {
+            println!("Choosing to place card on top of {}", right_card);
         } else if guess == 3 {
             break;
         } else if guess < 0 || guess > 2 {
             return Err("Input must be integer between 0 and 2 inclusive");
+        } else if guess == 2 {
+            // wait for computer to play
+            // iterate through all possible playable cards for left and right
+            // if you find one you can play, play -> update the correct iterator for the card played
+            let computer_card_options = computer_five.get_cards();
+            for guess in 0..computer_card_options.len() {
+                let chosen_card = computer_card_options.get(guess as usize).clone().unwrap();
+                let chosen_rank = chosen_card.rank.clone();
+                if left_pile.peek_next() == chosen_rank {
+                    println!("Computer placed {} on top of {}", chosen_card, right_card);
+                    // update the left pile for new top card
+                    right_card = Card {
+                        suite: chosen_card.suite.clone(),
+                        rank: chosen_rank,
+                    };
+                    left_pile.next();
+                    // remove the card you chose
+                    computer_five.remove_card(&chosen_card);
+                    // and get a new one for the five
+                    // computer used up all of its cards so it wins
+                    if computer_complete_hand.len() == 0 {
+                        println!("Computer wins!");
+                        return Ok(());
+                    }
+                    // computer pulls a new card into its hand of 5 removing from its deck
+                    match computer_complete_hand.deal_one() {
+                        Some(card) => computer_five.add_card(card),
+                        None => {}
+                    };
+                    break;
+                } else if left_pile.peek_prev() == chosen_rank {
+                    println!("Computer placed {} on top of {}", chosen_card, right_card);
+                    // update the left pile for new top card
+                    right_card = Card {
+                        suite: chosen_card.suite.clone(),
+                        rank: chosen_rank,
+                    };
+                    left_pile.prev();
+                    // remove the card you chose
+                    computer_five.remove_card(&chosen_card);
+                    // computer used up all of its cards so it wins
+                    if computer_complete_hand.len() == 0 {
+                        println!("Computer wins!");
+                        return Ok(());
+                    }
+                    // computer pulls a new card into its hand of 5 removing from its deck
+                    match computer_complete_hand.deal_one() {
+                        Some(card) => computer_five.add_card(card),
+                        None => {}
+                    }
+                    break;
+                } else if right_pile.peek_next() == chosen_rank {
+                    println!("Computer placed {} on top of {}", chosen_card, left_card);
+                    // update the right pile for new top card
+                    left_card = Card {
+                        suite: chosen_card.suite.clone(),
+                        rank: chosen_rank,
+                    };
+                    right_pile.next();
+                    // remove the card the player chose
+                    computer_five.remove_card(&chosen_card);
+                    // and get a new one for the five
+                    if computer_complete_hand.len() == 0 {
+                        println!("Computer wins");
+                        return Ok(());
+                    }
+                    match computer_complete_hand.deal_one() {
+                        Some(card) => computer_five.add_card(card),
+                        None => {}
+                    };
+                    break;
+                } else if right_pile.peek_prev() == chosen_rank {
+                    println!("Computer placed {} on top of {}", chosen_card, left_card);
+                    // update the right pile for new top card
+                    left_card = Card {
+                        suite: chosen_card.suite.clone(),
+                        rank: chosen_rank,
+                    };
+                    right_pile.prev();
+                    // remove the card you chose
+                    computer_five.remove_card(&chosen_card);
+                    // and get a new one for the five
+                    if computer_complete_hand.len() == 0 {
+                        println!("Computer wins!");
+                        return Ok(());
+                    }
+                    match computer_complete_hand.deal_one() {
+                        Some(card) => computer_five.add_card(card),
+                        None => {}
+                    };
+                    break;
+                }
+            }
+            // if both can't play -> pull from each player and computers deck
+            println!(
+                "Middle cards:\n{}\n(0){}(1){}{}\n",
+                divider, left_card, right_card, divider
+            );
         }
         println!("Choose which card");
         println!("Your cards:\n{}\n{}{}\n", divider, player_five, divider);
-        //let mut computer_five = computer_complete_hand.deal_hand(5);
         let guess = get_input();
         if guess < 0 || guess > 4 {
             return Err("Input must be integer between 0 and 4 inclusive");
         }
-        let player_card_options = player_five.getCards();
+        let player_card_options = player_five.get_cards();
         let chosen_card = player_card_options.get(guess as usize).unwrap();
         let chosen_rank = chosen_card.rank.clone();
         if left_side {
             // place card down
             if left_pile.peek_next() == chosen_rank {
-                println!("placed {} on top of {}", chosen_card, left_card);
+                println!("You placed {} on top of {}", chosen_card, right_card);
+                // update the left pile for new top card
+                right_card = Card {
+                    suite: chosen_card.suite.clone(),
+                    rank: chosen_rank,
+                };
                 left_pile.next();
                 // remove the card you chose
                 player_five.remove_card(&chosen_card);
@@ -241,9 +345,17 @@ fn main() -> Result<(), &'static str> {
                     println!("You win!");
                     break;
                 }
-                player_five.add_card(player_complete_hand.deal_one().unwrap());
+                match player_complete_hand.deal_one() {
+                    Some(card) => player_five.add_card(card),
+                    None => {}
+                }
             } else if left_pile.peek_prev() == chosen_rank {
-                println!("placed {} on top of {}", chosen_card, left_card);
+                println!("You placed {} on top of {}", chosen_card, right_card);
+                // update the left pile for new top card
+                right_card = Card {
+                    suite: chosen_card.suite.clone(),
+                    rank: chosen_rank,
+                };
                 left_pile.prev();
                 // remove the card you chose
                 player_five.remove_card(&chosen_card);
@@ -252,17 +364,25 @@ fn main() -> Result<(), &'static str> {
                     println!("You win!");
                     break;
                 }
-                player_five.add_card(player_complete_hand.deal_one().unwrap());
+                match player_complete_hand.deal_one() {
+                    Some(card) => player_five.add_card(card),
+                    None => {}
+                }
             } else {
                 println!(
                     "Invalid move try again\nTried placing {} on top of {}",
-                    chosen_card, left_card
+                    chosen_card, right_card
                 );
             }
         } else {
             // place card down
             if right_pile.peek_next() == chosen_rank {
-                println!("placed {} on top of {}", chosen_card, right_card);
+                println!("You placed {} on top of {}", chosen_card, left_card);
+                // update the right pile for new top card
+                left_card = Card {
+                    suite: chosen_card.suite.clone(),
+                    rank: chosen_rank,
+                };
                 right_pile.next();
                 // remove the card the player chose
                 player_five.remove_card(&chosen_card);
@@ -271,9 +391,17 @@ fn main() -> Result<(), &'static str> {
                     println!("You win!");
                     break;
                 }
-                player_five.add_card(player_complete_hand.deal_one().unwrap());
+                match player_complete_hand.deal_one() {
+                    Some(card) => player_five.add_card(card),
+                    None => {}
+                }
             } else if right_pile.peek_prev() == chosen_rank {
-                println!("placed {} on top of {}", chosen_card, right_card);
+                println!("You placed {} on top of {}", chosen_card, left_card);
+                // update the right pile for new top card
+                left_card = Card {
+                    suite: chosen_card.suite.clone(),
+                    rank: chosen_rank,
+                };
                 right_pile.prev();
                 // remove the card you chose
                 player_five.remove_card(&chosen_card);
@@ -282,15 +410,17 @@ fn main() -> Result<(), &'static str> {
                     println!("You win!");
                     break;
                 }
-                player_five.add_card(player_complete_hand.deal_one().unwrap());
+                match player_complete_hand.deal_one() {
+                    Some(card) => player_five.add_card(card),
+                    None => {}
+                }
             } else {
                 println!(
                     "Invalid move try again\nTried placing {} on top of {}",
-                    chosen_card, right_card
+                    chosen_card, left_card
                 );
             }
         }
-        println!("You chose option {}", guess);
     }
     Ok(())
 }
