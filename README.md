@@ -5,6 +5,6 @@ just exercise to learn Rust
 
 TODO
 
-[ ] fix bugs
-[ ] add threading to race the computer in speed
-[ ] add UI
+- [ ] fix bugs
+- [ ] add threading to race the computer in speed
+- [ ] add UI
