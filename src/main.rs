@@ -55,7 +55,7 @@ impl fmt::Display for Rank {
             Rank::Six => "Six",
             Rank::Seven => "Seven",
             Rank::Eight => "Eight",
-            Rank::Nine => "Nine ",
+            Rank::Nine => "Nine",
             Rank::Ten => "Ten",
             Rank::Jack => "Jack",
             Rank::Queen => "Queen",
@@ -106,11 +106,6 @@ impl fmt::Display for Deck {
         }
         fmt.write_str(&str_rep)?;
         Ok(())
-        // write!(
-        //     fmt,
-        //     "{}",
-        //     self.cards.iter().map(|v| v.to_string()).collect::<String>()
-        // )
     }
 }
 #[derive(Clone, PartialEq)]
@@ -183,14 +178,14 @@ impl Deck {
 
 #[derive(Clone)]
 struct Pile {
-    idx: usize,
+    idx: isize,
     top: Card,
 }
 
 impl<'a> Pile {
     fn new(card: &Card) -> Pile {
         Pile {
-            idx: RANKS.iter().position(|&r| r == card.rank).unwrap(),
+            idx: RANKS.iter().position(|&r| r == card.rank).unwrap() as isize,
             top: *card,
         }
     }
@@ -198,15 +193,17 @@ impl<'a> Pile {
     // return None if card has been placed
     fn place_card(&mut self, card: Card, who: &str) -> Option<Card> {
         let rank = card.rank;
-        if RANKS[(self.idx + 1) % RANKS.len()] == rank {
+        let above = (self.idx + 1).rem_euclid(RANKS.len() as isize);
+        let below = (self.idx - 1).rem_euclid(RANKS.len() as isize);
+        if RANKS[above as usize] == rank {
             println!("{} placed {} on top of {}", who, card, self.top);
             self.top = card;
-            self.idx = (self.idx + 1) % RANKS.len();
+            self.idx = above;
             None
-        } else if RANKS[(self.idx - 1) % RANKS.len()] == rank {
+        } else if RANKS[below as usize] == rank {
             println!("{} placed {} on top of {}", who, card, self.top);
             self.top = card;
-            self.idx = (self.idx + 1) % RANKS.len();
+            self.idx = below;
             None
         } else {
             Some(card)
@@ -214,13 +211,13 @@ impl<'a> Pile {
     }
 
     fn set_card(&mut self, card: Card) {
-        self.idx = RANKS.iter().position(|&r| r == card.rank).unwrap();
+        self.idx = RANKS.iter().position(|&r| r == card.rank).unwrap() as isize;
         self.top = card;
     }
 
     fn can_place_card(&self, card: Card) -> bool {
-        (RANKS[(self.idx - 1) % RANKS.len()] == card.rank)
-            || (RANKS[(self.idx + 1) % RANKS.len()] == card.rank)
+        (RANKS[(self.idx - 1).rem_euclid(RANKS.len() as isize) as usize] == card.rank)
+            || (RANKS[(self.idx + 1).rem_euclid(RANKS.len() as isize) as usize] == card.rank)
     }
 
     fn get_top(&self) -> Card {
