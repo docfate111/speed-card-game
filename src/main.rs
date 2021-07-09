@@ -1,6 +1,4 @@
-use rand::Rng;
-use std::fmt;
-use std::io;
+use std::{fmt, io};
 #[derive(Copy, Clone, PartialEq)]
 enum Suite {
     Clubs,
@@ -11,42 +9,87 @@ enum Suite {
 #[derive(Copy, Clone, PartialEq)]
 pub struct Card {
     suite: Suite,
-    rank: &'static str,
+    rank: Rank,
 }
 
-const RANKS: &'static [&str] = &[
-    "Ace", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen",
-    "King",
+#[derive(Copy, Clone, PartialEq)]
+enum Rank {
+    Ace,
+    Two,
+    Three,
+    Four,
+    Five,
+    Six,
+    Seven,
+    Eight,
+    Nine,
+    Ten,
+    Jack,
+    Queen,
+    King,
+}
+const RANKS: [Rank; 13] = [
+    Rank::Ace,
+    Rank::Two,
+    Rank::Three,
+    Rank::Four,
+    Rank::Five,
+    Rank::Six,
+    Rank::Seven,
+    Rank::Eight,
+    Rank::Nine,
+    Rank::Ten,
+    Rank::Jack,
+    Rank::Queen,
+    Rank::King,
 ];
+
+impl fmt::Display for Rank {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            Rank::Ace => "Ace",
+            Rank::Two => "Two",
+            Rank::Three => "Three",
+            Rank::Four => "Four",
+            Rank::Five => "Five",
+            Rank::Six => "Six",
+            Rank::Seven => "Seven",
+            Rank::Eight => "Eight",
+            Rank::Nine => "Nine ",
+            Rank::Ten => "Ten",
+            Rank::Jack => "Jack",
+            Rank::Queen => "Queen",
+            Rank::King => "King",
+        };
+        write!(fmt, "{}", s)
+    }
+}
+
 impl fmt::Display for Card {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        let str_rep = self.to_string();
-        fmt.write_str(&str_rep)?;
-        Ok(())
+        write!(fmt, "{} of {}\n", self.rank, self.suite)
+    }
+}
+
+impl fmt::Display for Suite {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            Suite::Clubs => "Clubs",
+            Suite::Hearts => "Hearts",
+            Suite::Spades => "Spades",
+            Suite::Diamonds => "Diamonds",
+        };
+        write!(fmt, "{}", s)
     }
 }
 
 impl Card {
-    fn new(suite: Suite, rank: &'static str) -> Card {
+    fn new(suite: Suite, rank: Rank) -> Card {
         Card {
             suite: suite,
             rank: rank,
         }
     }
-
-    fn to_string(&self) -> String {
-        match self.suite {
-            Suite::Clubs => format!("{} of Clubs\n", self.rank),
-            Suite::Spades => format!("{} of Spades\n", self.rank),
-            Suite::Diamonds => format!("{} of Diamonds\n", self.rank),
-            Suite::Hearts => format!("{} of Hearts\n", self.rank),
-        }
-    }
-}
-
-#[derive(Clone, PartialEq)]
-pub struct Deck {
-    cards: Vec<Card>,
 }
 
 impl fmt::Display for Deck {
@@ -63,7 +106,16 @@ impl fmt::Display for Deck {
         }
         fmt.write_str(&str_rep)?;
         Ok(())
+        // write!(
+        //     fmt,
+        //     "{}",
+        //     self.cards.iter().map(|v| v.to_string()).collect::<String>()
+        // )
     }
+}
+#[derive(Clone, PartialEq)]
+pub struct Deck {
+    cards: Vec<Card>,
 }
 
 impl Deck {
@@ -73,34 +125,28 @@ impl Deck {
     }
 
     fn init(&mut self) {
-        if self.cards.len() != 0 {
-            return;
-        }
-        for rank in RANKS {
-            self.cards.push(Card::new(Suite::Diamonds, rank));
-            self.cards.push(Card::new(Suite::Spades, rank));
-            self.cards.push(Card::new(Suite::Clubs, rank));
-            self.cards.push(Card::new(Suite::Hearts, rank));
+        if self.cards.is_empty() {
+            for rank in RANKS {
+                self.cards.push(Card::new(Suite::Diamonds, rank));
+                self.cards.push(Card::new(Suite::Spades, rank));
+                self.cards.push(Card::new(Suite::Clubs, rank));
+                self.cards.push(Card::new(Suite::Hearts, rank));
+            }
         }
     }
 
     fn shuffle(&mut self) {
-        for _ in 0..(self.cards.len() * 3) {
-            let mut rng = rand::thread_rng();
-            let index = rng.gen_range(0..self.cards.len());
-            let index2 = rng.gen_range(0..self.cards.len());
-            if index != index2 {
-                self.cards.swap(index, index2);
-            }
-        }
+        use rand::seq::SliceRandom;
+        let mut rng = rand::thread_rng();
+        self.cards.shuffle(&mut rng);
     }
 
     fn deal_one(&mut self) -> Option<Card> {
         self.cards.pop()
     }
 
-    fn deal_hand(&mut self, num_of_cards: i32) -> Option<Deck> {
-        if num_of_cards > self.cards.len() as i32 {
+    fn deal_hand(&mut self, num_of_cards: usize) -> Option<Deck> {
+        if num_of_cards > self.cards.len() {
             return None;
         }
         let mut hand = Vec::<Card>::new();
@@ -118,8 +164,8 @@ impl Deck {
         self.cards.push(to_add);
     }
 
-    fn len(&self) -> i32 {
-        self.cards.len() as i32
+    fn len(&self) -> usize {
+        self.cards.len()
     }
 
     fn deal_rest(&mut self) -> Option<Deck> {
@@ -150,23 +196,31 @@ impl<'a> Pile {
     }
     // put a card on top of the current one
     // return None if card has been placed
-    fn place_card(&mut self, card: Card) -> Option<Card> {
+    fn place_card(&mut self, card: Card, who: &str) -> Option<Card> {
         let rank = card.rank;
-        if RANKS[(((self.idx as isize) + 1).rem_euclid(RANKS.len() as isize) as usize)] == rank {
+        if RANKS[(self.idx + 1) % RANKS.len()] == rank {
+            println!("{} placed {} on top of {}", who, card, self.top);
             self.top = card;
-            println!("Placed {} on top of {}", card, RANKS[self.idx]);
-            self.idx = ((self.idx as isize) + 1).rem_euclid(RANKS.len() as isize) as usize;
+            self.idx = (self.idx + 1) % RANKS.len();
             None
-        } else if RANKS[(((self.idx as isize) - 1).rem_euclid(RANKS.len() as isize) as usize)]
-            == rank
-        {
+        } else if RANKS[(self.idx - 1) % RANKS.len()] == rank {
+            println!("{} placed {} on top of {}", who, card, self.top);
             self.top = card;
-            println!("Placed {} on top of {}", card, RANKS[self.idx]);
-            self.idx = ((self.idx as isize) + 1).rem_euclid(RANKS.len() as isize) as usize;
+            self.idx = (self.idx + 1) % RANKS.len();
             None
         } else {
             Some(card)
         }
+    }
+
+    fn set_card(&mut self, card: Card) {
+        self.idx = RANKS.iter().position(|&r| r == card.rank).unwrap();
+        self.top = card;
+    }
+
+    fn can_place_card(&self, card: Card) -> bool {
+        (RANKS[(self.idx - 1) % RANKS.len()] == card.rank)
+            || (RANKS[(self.idx + 1) % RANKS.len()] == card.rank)
     }
 
     fn get_top(&self) -> Card {
@@ -200,18 +254,23 @@ fn get_player_card_choice(divider: &String, player_five: &Deck) -> Option<i32> {
     }
 }
 
-fn play_card(left_pile: &mut Pile, right_pile: &mut Pile, chosen_card: Card) -> Option<Card> {
-    match left_pile.place_card(chosen_card) {
+fn play_card(
+    left_pile: &mut Pile,
+    right_pile: &mut Pile,
+    chosen_card: Card,
+    who: &str,
+) -> Option<Card> {
+    match left_pile.place_card(chosen_card, who) {
         None => None,
-        Some(card) => match right_pile.place_card(card) {
+        Some(card) => match right_pile.place_card(card, who) {
             None => None,
             Some(card) => Some(card),
         },
     }
 }
 
-fn play_card_pile(pile: &mut Pile, chosen_card: Card) -> Option<Card> {
-    match pile.place_card(chosen_card) {
+fn play_card_pile(pile: &mut Pile, chosen_card: Card, who: &str) -> Option<Card> {
+    match pile.place_card(chosen_card, who) {
         None => None,
         Some(card) => Some(card),
     }
@@ -252,7 +311,7 @@ fn main() -> Result<(), &'static str> {
             } else {
                 right_pile.clone()
             };
-            match play_card_pile(&mut pile, *chosen_card) {
+            match play_card_pile(&mut pile, *chosen_card, "You") {
                 None => {
                     player_five.remove_card(&chosen_card);
                     match player_complete_hand.deal_one() {
@@ -266,6 +325,7 @@ fn main() -> Result<(), &'static str> {
                 }
                 Some(_) => {
                     println!("You played an invalid move!");
+                    println!("Can't place {} on top of {}", *chosen_card, pile.get_top());
                 }
             }
             if guess == 0 {
@@ -285,10 +345,9 @@ fn main() -> Result<(), &'static str> {
             // if you find one you can play, play -> update the correct iterator for the card played
             let computer_card_options = computer_five.get_cards();
             let mut couldnt_play = 0;
-            for guess in 0..computer_card_options.len() {
-                let chosen_card = computer_card_options.get(guess as usize).unwrap();
+            for chosen_card in computer_card_options.iter() {
                 // if the card isn't back it cannot be played
-                match play_card(&mut left_pile, &mut right_pile, *chosen_card) {
+                match play_card(&mut left_pile, &mut right_pile, *chosen_card, "Computer") {
                     None => {
                         computer_five.remove_card(&chosen_card);
                         match computer_complete_hand.deal_one() {
@@ -310,6 +369,39 @@ fn main() -> Result<(), &'static str> {
             // if both can't play any cards -> pull from each player and computers deck
             if couldnt_play == computer_card_options.len() {
                 println!("Computer couldn't play any cards!");
+                let mut num_of_cards_player_cant_play = 0;
+                // check if user can play cards
+                for user_card in player_five.get_cards().iter() {
+                    if !left_pile.can_place_card(*user_card)
+                        && !right_pile.can_place_card(*user_card)
+                    {
+                        num_of_cards_player_cant_play += 1;
+                    }
+                }
+                // if the player and computer both can't play any cards
+                // big one from each of their decks to place
+                if num_of_cards_player_cant_play == player_five.len() {
+                    println!("Neither you nor the computer could play any cards");
+                    println!("So both of you give up a card and put it into the middle two");
+                    if player_complete_hand.len() > 0 {
+                        left_pile.set_card(player_complete_hand.deal_one().unwrap());
+                    } else {
+                        if player_five.len() > 0 {
+                            left_pile.set_card(player_five.deal_one().unwrap());
+                        } else {
+                            println!("You win! Game over!");
+                        }
+                    }
+                    if player_complete_hand.len() > 0 {
+                        right_pile.set_card(computer_complete_hand.deal_one().unwrap());
+                    } else {
+                        if player_five.len() > 0 {
+                            right_pile.set_card(computer_five.deal_one().unwrap());
+                        } else {
+                            println!("Computer wins! Game over!");
+                        }
+                    }
+                }
             }
         }
         left_card = left_pile.get_top();

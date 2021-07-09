@@ -5,6 +5,7 @@ just exercise to learn Rust
 
 TODO
 
+- [ ] code for case that both player can't play
 - [ ] fix bugs
 - [ ] add threading to race the computer in speed
-- [ ] add UI
+- [ ] add UI/website
