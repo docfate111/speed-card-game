@@ -108,7 +108,7 @@ impl fmt::Display for Deck {
         Ok(())
     }
 }
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub struct Deck {
     cards: Vec<Card>,
 }
@@ -272,137 +272,167 @@ fn play_card_pile(pile: &mut Pile, chosen_card: Card, who: &str) -> Option<Card>
         Some(card) => Some(card),
     }
 }
-fn main() -> Result<(), &'static str> {
-    let mut deck = Deck::new();
-    deck.init();
-    deck.shuffle();
-    // speed starts with 2 in the middle
-    let starting_two = deck.deal_hand(2).unwrap();
-    let mut starting_two_cards = starting_two.get_cards();
-    let mut left_card = starting_two_cards.pop().unwrap();
-    let mut left_pile = Pile::new(&left_card);
-    let mut right_card = starting_two_cards.pop().unwrap();
-    let mut right_pile = Pile::new(&right_card);
-    let mut player_complete_hand = deck.deal_hand(deck.len() / 2).unwrap();
-    let mut computer_complete_hand = deck.deal_rest().unwrap();
-    let mut player_five = player_complete_hand.deal_hand(5).unwrap();
-    let mut computer_five = computer_complete_hand.deal_hand(5).unwrap();
-    loop {
-        let divider = "=".repeat(16);
-        println!(
-            "Middle cards:\n{}\n(0){}(1){}{}\n",
-            divider, left_card, right_card, divider
-        );
-        println!("Your cards:\n{}\n{}{}\n", divider, player_five, divider);
-        print_menu();
-        let guess = get_input();
-        if guess == 0 || guess == 1 {
-            let card = if guess == 0 { left_card } else { right_card };
-            println!("Choosing to place card on top of {}", card);
-            let index =
-                get_player_card_choice(&divider, &player_five).expect("Error: Invalid choice");
-            let player_cards = player_five.get_cards();
-            let chosen_card = player_cards.get(index as usize).unwrap();
-            let mut pile = if guess == 0 {
-                left_pile.clone()
-            } else {
-                right_pile.clone()
-            };
-            match play_card_pile(&mut pile, *chosen_card, "You") {
-                None => {
-                    player_five.remove_card(&chosen_card);
-                    match player_complete_hand.deal_one() {
-                        None => {}
-                        Some(new_card) => player_five.add_card(new_card),
-                    }
-                    if player_five.len() == 0 {
-                        println!("Computer wins! It is out of cards!");
-                        return Ok(());
-                    }
-                }
-                Some(_) => {
-                    println!("You played an invalid move!");
-                    println!("Can't place {} on top of {}", *chosen_card, pile.get_top());
-                }
-            }
-            if guess == 0 {
-                left_pile = pile;
-            } else {
-                right_pile = pile;
-            }
-        } else if guess == 3 {
-            // exit
-            println!("Exiting...");
-            break;
-        } else if guess < 0 || guess > 2 {
-            return Err("Input must be integer between 0 and 2 inclusive");
-        } else if guess == 2 {
-            // wait for computer to play
-            // iterate through all possible playable cards for left and right
-            // if you find one you can play, play -> update the correct iterator for the card played
-            let computer_card_options = computer_five.get_cards();
-            let mut couldnt_play = 0;
-            for chosen_card in computer_card_options.iter() {
-                // if the card isn't back it cannot be played
-                match play_card(&mut left_pile, &mut right_pile, *chosen_card, "Computer") {
-                    None => {
-                        computer_five.remove_card(&chosen_card);
-                        match computer_complete_hand.deal_one() {
-                            None => {}
-                            Some(new_card) => computer_five.add_card(new_card),
-                        }
-                        if computer_five.len() == 0 {
-                            println!("Computer wins! It is out of cards!");
-                            return Ok(());
-                        }
-                        break;
-                    }
-                    Some(_) => {
-                        couldnt_play += 1;
-                        continue;
-                    }
-                }
-            }
-            // if both can't play any cards -> pull from each player and computers deck
-            if couldnt_play == computer_card_options.len() {
-                println!("Computer couldn't play any cards!");
-                let mut num_of_cards_player_cant_play = 0;
-                // check if user can play cards
-                for user_card in player_five.get_cards().iter() {
-                    if !left_pile.can_place_card(*user_card)
-                        && !right_pile.can_place_card(*user_card)
-                    {
-                        num_of_cards_player_cant_play += 1;
-                    }
-                }
-                // if the player and computer both can't play any cards
-                // big one from each of their decks to place
-                if num_of_cards_player_cant_play == player_five.len() {
-                    println!("Neither you nor the computer could play any cards");
-                    println!("So both of you give up a card and put it into the middle two");
-                    if player_complete_hand.len() > 0 {
-                        left_pile.set_card(player_complete_hand.deal_one().unwrap());
-                    } else {
-                        if player_five.len() > 0 {
-                            left_pile.set_card(player_five.deal_one().unwrap());
-                        } else {
-                            println!("You win! Game over!");
-                        }
-                    }
-                    if player_complete_hand.len() > 0 {
-                        right_pile.set_card(computer_complete_hand.deal_one().unwrap());
-                    } else {
-                        if player_five.len() > 0 {
-                            right_pile.set_card(computer_five.deal_one().unwrap());
-                        } else {
-                            println!("Computer wins! Game over!");
-                        }
-                    }
-                }
-            }
-        }
-        left_card = left_pile.get_top();
-        right_card = right_pile.get_top();
+
+struct Game {
+    deck: Deck,
+    left_card: Card,
+    right_card: Card,
+    left_pile: Pile,
+    right_pile: Pile,
+    starting_two: Deck,
+    player_complete_hand: Deck,
+    computer_complete_hand: Deck,
+    player_five: Deck,
+    computer_five: Deck
+}
+
+impl Game {
+    fn new() -> Game {
+        let mut deck = Deck::new();
+        deck.init();
+        deck.shuffle();
+        // speed starts with 2 in the middle
+        let starting_two = deck.deal_hand(2).unwrap();
+        let mut starting_two_cards = starting_two.get_cards();
+        let mut left_card = starting_two_cards.pop().unwrap();
+        let mut left_pile = Pile::new(&left_card);
+        let mut right_card = starting_two_cards.pop().unwrap();
+        let mut right_pile = Pile::new(&right_card);
+        let mut player_complete_hand = deck.deal_hand(deck.len() / 2).unwrap();
+        let mut computer_complete_hand = deck.deal_rest().unwrap();
+        let mut player_five = player_complete_hand.deal_hand(5).unwrap();
+        let mut computer_five = computer_complete_hand.deal_hand(5).unwrap();
+        Game {  deck: deck.clone(),
+            left_card: left_card,
+            right_card: right_card,
+            left_pile: left_pile.clone(),
+            right_pile: right_pile.clone(),
+            starting_two: starting_two.clone(),
+            player_complete_hand: player_complete_hand.clone(),
+            computer_complete_hand: computer_complete_hand.clone(),
+            player_five: player_five.clone(),
+            computer_five: computer_five.clone() }
     }
+}
+fn main() -> Result<(), &'static str> {
+    let mut g = Game::new();
+    println!("{}", g.left_card);
+    // loop {
+    //     let divider = "=".repeat(16);
+    //     println!(
+    //         "Middle cards:\n{}\n(0){}(1){}{}\n",
+    //         divider, left_card, right_card, divider
+    //     );
+    //     println!("Your cards:\n{}\n{}{}\n", divider, player_five, divider);
+    //     print_menu();
+    //     let guess = get_input();
+    //     if guess == 0 || guess == 1 {
+    //         let card = if guess == 0 { left_card } else { right_card };
+    //         println!("Choosing to place card on top of {}", card);
+    //         let index =
+    //             get_player_card_choice(&divider, &player_five).expect("Error: Invalid choice");
+    //         let player_cards = player_five.get_cards();
+    //         let chosen_card = player_cards.get(index as usize).unwrap();
+    //         let mut pile = if guess == 0 {
+    //             left_pile.clone()
+    //         } else {
+    //             right_pile.clone()
+    //         };
+    //         match play_card_pile(&mut pile, *chosen_card, "You") {
+    //             None => {
+    //                 player_five.remove_card(&chosen_card);
+    //                 match player_complete_hand.deal_one() {
+    //                     None => {}
+    //                     Some(new_card) => player_five.add_card(new_card),
+    //                 }
+    //                 if player_five.len() == 0 {
+    //                     println!("Computer wins! It is out of cards!");
+    //                     return Ok(());
+    //                 }
+    //             }
+    //             Some(_) => {
+    //                 println!("You played an invalid move!");
+    //                 println!("Can't place {} on top of {}", *chosen_card, pile.get_top());
+    //             }
+    //         }
+    //         if guess == 0 {
+    //             left_pile = pile;
+    //         } else {
+    //             right_pile = pile;
+    //         }
+    //     } else if guess == 3 {
+    //         // exit
+    //         println!("Exiting...");
+    //         break;
+    //     } else if guess < 0 || guess > 2 {
+    //         return Err("Input must be integer between 0 and 2 inclusive");
+    //     } else if guess == 2 {
+    //         // wait for computer to play
+    //         // iterate through all possible playable cards for left and right
+    //         // if you find one you can play, play -> update the correct iterator for the card played
+    //         let computer_card_options = computer_five.get_cards();
+    //         let mut couldnt_play = 0;
+    //         for chosen_card in computer_card_options.iter() {
+    //             // if the card isn't back it cannot be played
+    //             match play_card(&mut left_pile, &mut right_pile, *chosen_card, "Computer") {
+    //                 None => {
+    //                     computer_five.remove_card(&chosen_card);
+    //                     match computer_complete_hand.deal_one() {
+    //                         None => {}
+    //                         Some(new_card) => computer_five.add_card(new_card),
+    //                     }
+    //                     if computer_five.len() == 0 {
+    //                         println!("Computer wins! It is out of cards!");
+    //                         return Ok(());
+    //                     }
+    //                     break;
+    //                 }
+    //                 Some(_) => {
+    //                     couldnt_play += 1;
+    //                     continue;
+    //                 }
+    //             }
+    //         }
+    //         // if both can't play any cards -> pull from each player and computers deck
+    //         if couldnt_play == computer_card_options.len() {
+    //             println!("Computer couldn't play any cards!");
+    //             let mut num_of_cards_player_cant_play = 0;
+    //             // check if user can play cards
+    //             for user_card in player_five.get_cards().iter() {
+    //                 if !left_pile.can_place_card(*user_card)
+    //                     && !right_pile.can_place_card(*user_card)
+    //                 {
+    //                     num_of_cards_player_cant_play += 1;
+    //                 }
+    //             }
+    //             // if the player and computer both can't play any cards
+    //             // big one from each of their decks to place
+    //             if num_of_cards_player_cant_play == player_five.len() {
+    //                 println!("Neither you nor the computer could play any cards");
+    //                 println!("So both of you give up a card and put it into the middle two");
+    //                 if player_complete_hand.len() > 0 {
+    //                     left_pile.set_card(player_complete_hand.deal_one().unwrap());
+    //                 } else {
+    //                     if player_five.len() > 0 {
+    //                         left_pile.set_card(player_five.deal_one().unwrap());
+    //                     } else {
+    //                         println!("You win! Game over!");
+    //                     }
+    //                 }
+    //                 if player_complete_hand.len() > 0 {
+    //                     right_pile.set_card(computer_complete_hand.deal_one().unwrap());
+    //                 } else {
+    //                     if player_five.len() > 0 {
+    //                         right_pile.set_card(computer_five.deal_one().unwrap());
+    //                     } else {
+    //                         println!("Computer wins! Game over!");
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     left_card = left_pile.get_top();
+    //     right_card = right_pile.get_top();
+    // }
     Ok(())
 }
